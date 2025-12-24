@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: hexforge-surface-engine
+Version: 0.1.0
+Summary: HexForge Surface Engine (HSE) - texture-first surface + enclosure generation API
+Requires-Python: >=3.11
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn[standard]>=0.27
+Requires-Dist: pydantic>=2.6

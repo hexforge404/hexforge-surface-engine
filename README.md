@@ -31,3 +31,7 @@ HSE is designed to integrate with the HexForge stack:
 4) Enclosure generator produces base geometry + mapping reference
 5) Outputs + previews are written to canonical public asset folders
 6) UI displays previews and provides downloads
+
+
+
+sudo chown -R devuser:devuser /mnt/hdd-storage/hexforge-surface-engine
