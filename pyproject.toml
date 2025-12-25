@@ -1,7 +1,7 @@
 [project]
-name = "hexforge-surface-engine"
+name = "hexforge-glyphengine"
 version = "0.1.0"
-description = "HexForge Surface Engine (HSE) - texture-first surface + enclosure generation API"
+description = "HexForge GlyphEngine (Surface v1 API) — texture-first surface + enclosure generation API"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.110",

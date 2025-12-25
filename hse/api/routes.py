@@ -24,7 +24,7 @@ def _write_placeholder_png(path: Path, label: str, size=(768, 512)) -> None:
 
 @router.get("/health")
 def health():
-    return {"ok": True, "service": "hexforge-surface-engine"}
+    return {"ok": True, "service": "hexforge-glyphengine", "api": "surface-v1"}
 
 @router.post("/jobs", response_model=CreateJobResponse)
 def create_job(req: CreateJobRequest):

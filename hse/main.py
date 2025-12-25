@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from hse.api.routes import router as surface_router
 
-app = FastAPI(title="HexForge Surface Engine", version="0.1.0")
+app = FastAPI(title="Hexforge-Glyphengine", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
