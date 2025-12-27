@@ -24,7 +24,7 @@ RUN useradd -m -u 10001 -s /bin/bash appuser
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY hse /app/hse
+COPY src/hse /app/hse
 
 # (Optional) if you ever write temp stuff under /app, this avoids surprises
 RUN chown -R appuser:appuser /app

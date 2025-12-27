@@ -11,3 +11,16 @@ __pycache__/
 .DS_Store
 .vscode/
 
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local artifacts
+TREE.txt
+

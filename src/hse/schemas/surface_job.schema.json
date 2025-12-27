@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexforgelabs.com/schemas/surface_job.schema.json",
+  "title": "HexForge Surface Job (v1)",
+  "type": "object",
+  "required": [
+    "job_id",
+    "service",
+    "version",
+    "created_at",
+    "updated_at",
+    "status",
+    "public_base_url",
+    "output_dir",
+    "artifacts",
+    "params"
+  ],
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "minLength": 8,
+      "description": "Stable filesystem-safe ID for this job."
+    },
+    "service": {
+      "type": "string",
+      "const": "hexforge-glyphengine"
+    },
+    "version": {
+      "type": "string",
+      "const": "v1"
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "done", "failed"]
+    },
+    "error": {
+      "type": ["object", "null"],
+      "required": ["message"],
+      "properties": {
+        "message": { "type": "string" },
+        "code": { "type": ["string", "null"] },
+        "detail": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "public_base_url": {
+      "type": "string",
+      "description": "Public base path served by nginx, like /assets/surface/<job_id>/"
+    },
+    "output_dir": {
+      "type": "string",
+      "description": "Absolute directory on disk where files live."
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["job_json", "previews", "textures", "models"],
+      "properties": {
+        "job_json": { "type": "string", "const": "job.json" },
+        "previews": {
+          "type": "object",
+          "required": ["hero", "iso", "top", "side"],
+          "properties": {
+            "hero": { "type": "string" },
+            "iso": { "type": "string" },
+            "top": { "type": "string" },
+            "side": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "textures": {
+          "type": "object",
+          "required": ["texture_png", "heightmap_png"],
+          "properties": {
+            "texture_png": { "type": "string" },
+            "heightmap_png": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "models": {
+          "type": "object",
+          "required": ["enclosure_stl"],
+          "properties": {
+            "enclosure_stl": { "type": "string" },
+            "enclosure_glb": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "params": {
+      "type": "object",
+      "description": "Inputs that define the job. Extend freely but keep stable keys.",
+      "required": ["prompt", "size_mm", "depth_mm"],
+      "properties": {
+        "prompt": { "type": "string" },
+        "font": { "type": ["string", "null"] },
+        "pattern": { "type": ["string", "null"] },
+        "seed": { "type": ["integer", "null"] },
+        "size_mm": {
+          "type": "object",
+          "required": ["x", "y", "z"],
+          "properties": {
+            "x": { "type": "number" },
+            "y": { "type": "number" },
+            "z": { "type": "number" }
+          },
+          "additionalProperties": false
+        },
+        "depth_mm": { "type": "number" },
+        "material_hint": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

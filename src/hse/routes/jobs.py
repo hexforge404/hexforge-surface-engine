@@ -8,7 +8,7 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from hse.contracts.envelopes import job_status_envelope, now_iso
+from hse.contracts.envelopes import job_status, now_iso
 from hse.fs.paths import assets_root, job_dir, manifest_path, job_json_path
 from hse.fs.writer import write_manifest
 
@@ -57,7 +57,7 @@ async def create_job(req: Request):
         public={},
     )
 
-    return job_status_envelope(
+    return job_status(
         job_id=job_id,
         status="queued",
         public_root=assets_root(job_id, subfolder=subfolder),
@@ -84,7 +84,7 @@ async def get_job(job_id: str):
         status = doc.get("status") or infer_status_from_files(job_id)
         updated_at = doc.get("updated_at") or now_iso()
         public_root = doc.get("public_root") or assets_root(job_id)
-        return job_status_envelope(
+        return job_status(
             job_id=job_id,
             status=status,
             public_root=public_root,
@@ -93,7 +93,7 @@ async def get_job(job_id: str):
 
     # Fallback if manifest is missing for some reason
     status = infer_status_from_files(job_id)
-    return job_status_envelope(
+    return job_status(
         job_id=job_id,
         status=status,
         public_root=assets_root(job_id),
