@@ -10,11 +10,13 @@ WORKDIR /app
 # - Pillow runtime deps (safe defaults)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    git \
     libjpeg62-turbo \
     zlib1g \
     libpng16-16 \
     libfreetype6 \
  && rm -rf /var/lib/apt/lists/*
+
 
 # Create non-root user (matches your compose user: 10001)
 RUN useradd -m -u 10001 -s /bin/bash appuser

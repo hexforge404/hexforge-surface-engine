@@ -1,49 +1,101 @@
-from fastapi import APIRouter
-from datetime import datetime
-import secrets
+# src/hse/routes/jobs.py
+from __future__ import annotations
 
-from hse.models.job import CreateJobRequest, JobResponse
-from hse.fs.paths import job_disk_root, public_paths, sanitize_subfolder
-from hse.fs.writer import ensure_dirs, write_json
+import json
+import secrets
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Request
+
+from hse.contracts.envelopes import job_status_envelope, now_iso
+from hse.fs.paths import assets_root, job_dir, manifest_path, job_json_path
+from hse.fs.writer import write_manifest
 
 router = APIRouter(prefix="/api/surface", tags=["surface"])
 
-@router.post("/jobs", response_model=JobResponse)
-def create_job(req: CreateJobRequest):
-    # Deterministic job_id (timestamp + token)
-    job_id = f"hse_{datetime.utcnow().strftime('%Y-%m-%d_%H%M%S')}_{secrets.token_hex(4)}"
 
-    subfolder = sanitize_subfolder(req.subfolder)
-    root = job_disk_root(job_id, subfolder)
-    ensure_dirs(root)
+def infer_status_from_files(job_id: str) -> str:
+    """
+    Minimal inference until a worker explicitly updates status:
+      - complete if previews/hero.png exists
+      - running if job.json exists
+      - queued otherwise
+    """
+    root = job_dir(job_id)
+    if (root / "previews" / "hero.png").exists():
+        return "complete"
+    if (root / "job.json").exists():
+        return "running"
+    return "queued"
 
-    # Minimal job.json (enough for later rerender)
-    write_json(root / "job.json", {
-        "job_id": job_id,
-        "status": "created",
-        "subfolder": subfolder,
-        "request": req.model_dump(),
-    })
 
-    # Minimal previews.json placeholder
-    write_json(root / "previews.json", {
-        "job_id": job_id,
-        "status": "pending",
-        "previews": {},
-    })
+@router.post("/jobs")
+async def create_job(req: Request):
+    """
+    Surface v1 contract:
+      POST returns job_status envelope:
+        { job_id, status, service, updated_at, result:{ public:"/assets/..." } }
 
-    return JobResponse(
+    Also writes an initial job_manifest.json (status=queued).
+    """
+    body = await req.json()
+
+    # If you already generate job IDs elsewhere, replace this with your existing call.
+    job_id = secrets.token_hex(8)
+    subfolder = body.get("subfolder", None)
+
+    created_at = now_iso()
+
+    # Write initial manifest immediately (authoritative record exists from creation)
+    write_manifest(
         job_id=job_id,
-        status="created",
-        result={"public": public_paths(job_id, subfolder)}
+        status="queued",
+        created_at=created_at,
+        updated_at=created_at,
+        subfolder=subfolder,
+        public={},
     )
 
-@router.get("/jobs/{job_id}", response_model=JobResponse)
-def get_job(job_id: str, subfolder: str | None = None):
-    subfolder_s = sanitize_subfolder(subfolder)
-    # v1: return stable public paths even if files aren't generated yet
-    return JobResponse(
+    return job_status_envelope(
         job_id=job_id,
-        status="unknown",
-        result={"public": public_paths(job_id, subfolder_s)}
+        status="queued",
+        public_root=assets_root(job_id, subfolder=subfolder),
+        updated_at=created_at,
+    )
+
+
+@router.get("/jobs/{job_id}")
+async def get_job(job_id: str):
+    """
+    Surface v1 contract:
+      GET returns job_status envelope.
+
+    Prefers job_manifest.json if present; otherwise infers state from files.
+    """
+    root = job_dir(job_id)
+    if not root.exists():
+        raise HTTPException(status_code=404, detail="job not found")
+
+    mpath = manifest_path(job_id)
+
+    if mpath.exists():
+        doc = json.loads(mpath.read_text(encoding="utf-8"))
+        status = doc.get("status") or infer_status_from_files(job_id)
+        updated_at = doc.get("updated_at") or now_iso()
+        public_root = doc.get("public_root") or assets_root(job_id)
+        return job_status_envelope(
+            job_id=job_id,
+            status=status,
+            public_root=public_root,
+            updated_at=updated_at,
+        )
+
+    # Fallback if manifest is missing for some reason
+    status = infer_status_from_files(job_id)
+    return job_status_envelope(
+        job_id=job_id,
+        status=status,
+        public_root=assets_root(job_id),
+        updated_at=now_iso(),
     )

@@ -1,4 +1,12 @@
 # hexforge-glyphengine
+## Surface v1 (Frozen)
+
+Surface v1 is frozen/immutable.
+
+- `/api/surface` is permanent
+- `/assets/surface` is permanent
+- No breaking changes are allowed in v1
+- Any breaking change requires a v2 namespace and contracts (e.g. `/api/surface/v2`)
 
 
 hexforge-glyphengine

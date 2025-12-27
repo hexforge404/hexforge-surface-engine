@@ -1,72 +1,87 @@
+from __future__ import annotations
+
 import json
-import time
-import uuid
+import secrets
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
-from PIL import Image, ImageDraw
+from typing import Any, Dict, Optional
 
-from hse.core.config import SURFACE_OUTPUT_DIR, SURFACE_PUBLIC_PREFIX, ensure_dirs
-from hse.core.paths import job_root, ensure_job_tree, sanitize_subfolder
-from hse.schemas.jobs import CreateJobRequest, CreateJobResponse
+from fastapi import APIRouter, HTTPException, Request
 
-router = APIRouter(prefix="/api/surface", tags=["surface"]) 
+from hse.contracts.envelopes import job_status, now_iso
+from hse.fs.paths import job_dir, public_root, manifest_path
+from hse.fs.writer import write_manifest, write_json_atomic
 
-def _public_url(subfolder: str | None, job_id: str, rel: str) -> str:
-    if subfolder:
-        return f"{SURFACE_PUBLIC_PREFIX}/{subfolder}/{job_id}/{rel}"
-    return f"{SURFACE_PUBLIC_PREFIX}/{job_id}/{rel}"
+router = APIRouter(prefix="/api/surface", tags=["surface"])
 
-def _write_placeholder_png(path: Path, label: str, size=(768, 512)) -> None:
-    img = Image.new("RGB", size, color=(15, 18, 28))
-    d = ImageDraw.Draw(img)
-    d.text((20, 20), label, fill=(220, 240, 255))
-    img.save(path, format="PNG")
 
-@router.get("/health")
-def health():
-    return {"ok": True, "service": "hexforge-glyphengine", "api": "surface-v1"}
+def infer_status(job_id: str) -> str:
+    root = job_dir(job_id)
+    # complete if hero exists
+    if (root / "previews" / "hero.png").exists():
+        return "complete"
+    # running if any expected output folders exist
+    if (root / "textures").exists() or (root / "enclosure").exists():
+        return "running"
+    # queued if manifest exists
+    if manifest_path(job_id).exists():
+        return "queued"
+    return "queued"
 
-@router.post("/jobs", response_model=CreateJobResponse)
-def create_job(req: CreateJobRequest):
-    ensure_dirs()
-    job_id = uuid.uuid4().hex[:16]
-    sf = sanitize_subfolder(req.subfolder)
-    root = job_root(SURFACE_OUTPUT_DIR, job_id, sf)
-    tree = ensure_job_tree(root)
 
-    job_payload = {
-        "job_id": job_id,
-        "subfolder": sf,
-        "created_at": int(time.time()),
-        "request": req.model_dump(),
-    }
-    (tree["root"] / "job.json").write_text(json.dumps(job_payload, indent=2))
+@router.post("/jobs")
+async def create_job(req: Request) -> Dict[str, Any]:
+    """
+    Contract:
+      POST /api/surface/jobs -> job_status envelope
+      required: job_id, status, service, updated_at
+      optional: result.public
+    Also writes job_manifest.json immediately.
+    """
+    body = await req.json()
+    subfolder = body.get("subfolder", None)
 
-    # placeholders: enclosure + textures + previews
-    (tree["enclosure"] / "enclosure.stl").write_text("; placeholder STL\n")
-    _write_placeholder_png(tree["textures"] / "texture.png", "texture.png")
-    _write_placeholder_png(tree["textures"] / "heightmap.png", "heightmap.png")
-    _write_placeholder_png(tree["previews"] / "hero.png", "hero.png")
-    _write_placeholder_png(tree["previews"] / "iso.png", "iso.png")
-    _write_placeholder_png(tree["previews"] / "top.png", "top.png")
-    _write_placeholder_png(tree["previews"] / "side.png", "side.png")
+    job_id = secrets.token_hex(8)
+    created_at = now_iso()
 
-    previews = {
-        "job": _public_url(sf, job_id, "job.json"),
-        "stl": _public_url(sf, job_id, "enclosure/enclosure.stl"),
-        "texture": _public_url(sf, job_id, "textures/texture.png"),
-        "heightmap": _public_url(sf, job_id, "textures/heightmap.png"),
-        "hero": _public_url(sf, job_id, "previews/hero.png"),
-    }
+    # Ensure job dir exists
+    d = job_dir(job_id)
+    d.mkdir(parents=True, exist_ok=True)
 
-    return CreateJobResponse(job_id=job_id, subfolder=sf, status="created", public=previews)
+    # Snapshot request to job.json (keeps your legacy debugging behavior)
+    write_json_atomic(d / "job.json", {"received_at": created_at, "request": body})
+
+    # Write initial manifest (queued)
+    write_manifest(
+        job_id=job_id,
+        subfolder=subfolder,
+        status="queued",
+        created_at=created_at,
+        updated_at=created_at,
+        public={},
+    )
+
+    return job_status(job_id=job_id, status="queued", public_root=public_root(job_id, subfolder=subfolder), updated_at=created_at)
+
 
 @router.get("/jobs/{job_id}")
-def get_job(job_id: str, subfolder: str | None = None):
-    ensure_dirs()
-    sf = sanitize_subfolder(subfolder)
-    root = job_root(SURFACE_OUTPUT_DIR, job_id, sf)
-    job_file = root / "job.json"
-    if not job_file.exists():
+async def get_job(job_id: str) -> Dict[str, Any]:
+    """
+    Contract:
+      GET /api/surface/jobs/{job_id} -> job_status envelope
+    Prefers manifest; falls back to inferred status.
+    """
+    d = job_dir(job_id)
+    if not d.exists():
         raise HTTPException(status_code=404, detail="job not found")
-    return json.loads(job_file.read_text())
+
+    mp = manifest_path(job_id)
+    if mp.exists():
+        doc = json.loads(mp.read_text(encoding="utf-8"))
+        status = doc.get("status") or infer_status(job_id)
+        updated_at = doc.get("updated_at") or now_iso()
+        pr = doc.get("public_root") or public_root(job_id, subfolder=doc.get("subfolder"))
+        return job_status(job_id=job_id, status=status, public_root=pr, updated_at=updated_at)
+
+    # legacy fallback
+    status = infer_status(job_id)
+    return job_status(job_id=job_id, status=status, public_root=public_root(job_id), updated_at=now_iso())
