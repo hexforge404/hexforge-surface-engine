@@ -17,23 +17,36 @@ from hexforge_contracts import load_schema, validate_json
 router = APIRouter(tags=["surface"])
 
 
-def infer_status_from_files(job_id: str, *, subfolder: Optional[str] = None) -> str:
-    """
-    Minimal inference until a worker explicitly updates status:
-      - complete if previews/hero.png exists
-      - running if textures/ or enclosure/ exists
-      - queued otherwise
+def _nonempty(p):
+    return p.exists() and p.is_file() and p.stat().st_size > 0
 
-    Contract enum MUST remain: queued | running | complete | failed
-    """
+
+def infer_status_from_files(job_id: str, *, subfolder: Optional[str] = None) -> str:
     root = job_dir(job_id, subfolder=subfolder)
 
-    if (root / "previews" / "hero.png").exists():
+    hero = root / "previews" / "hero.png"
+    stl  = root / "enclosure" / "enclosure.stl"
+    tex  = root / "textures" / "texture.png"
+    hmap = root / "textures" / "heightmap.png"
+
+    # ✅ COMPLETE only when required outputs exist AND are non-empty
+    if (
+        _nonempty(hero)
+        and _nonempty(stl)
+        and _nonempty(tex)
+        and _nonempty(hmap)
+    ):
         return "complete"
 
-    if (root / "textures").exists() or (root / "enclosure").exists():
+    # 🔄 RUNNING once work has visibly started
+    if (
+        (root / "textures").exists()
+        or (root / "enclosure").exists()
+        or (root / "job.json").exists()
+    ):
         return "running"
 
+    # ⏳ Otherwise still queued
     return "queued"
 
 
