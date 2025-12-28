@@ -33,7 +33,7 @@
     "updated_at": { "type": "string", "format": "date-time" },
     "status": {
       "type": "string",
-      "enum": ["queued", "running", "done", "failed"]
+      "enum": ["queued","running","complete","failed"]
     },
     "error": {
       "type": ["object", "null"],

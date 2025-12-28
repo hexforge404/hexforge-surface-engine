@@ -1,101 +1,162 @@
-# src/hse/routes/jobs.py
 from __future__ import annotations
 
 import json
 import secrets
-from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
 from hse.contracts.envelopes import job_status, now_iso
-from hse.fs.paths import assets_root, job_dir, manifest_path, job_json_path
-from hse.fs.writer import write_manifest
+from hse.fs.paths import job_dir, manifest_path, public_root, sanitize_subfolder
+from hse.fs.writer import write_manifest, write_surface_job_json
+from fastapi.responses import JSONResponse
+from hexforge_contracts import load_schema, validate_json
+
+
 
 router = APIRouter(tags=["surface"])
 
 
-def infer_status_from_files(job_id: str) -> str:
+def infer_status_from_files(job_id: str, *, subfolder: Optional[str] = None) -> str:
     """
     Minimal inference until a worker explicitly updates status:
       - complete if previews/hero.png exists
-      - running if job.json exists
+      - running if textures/ or enclosure/ exists
       - queued otherwise
+
+    Contract enum MUST remain: queued | running | complete | failed
     """
-    root = job_dir(job_id)
+    root = job_dir(job_id, subfolder=subfolder)
+
     if (root / "previews" / "hero.png").exists():
         return "complete"
-    if (root / "job.json").exists():
+
+    if (root / "textures").exists() or (root / "enclosure").exists():
         return "running"
+
     return "queued"
 
 
 @router.post("/jobs")
-async def create_job(req: Request):
+async def create_job(req: Request) -> Dict[str, Any]:
     """
     Surface v1 contract:
       POST returns job_status envelope:
-        { job_id, status, service, updated_at, result:{ public:"/assets/..." } }
+        { job_id, status, service, updated_at, (optional result/...) }
 
-    Also writes an initial job_manifest.json (status=queued).
+    Also writes:
+      - job.json (public-facing Surface v1 job doc)    [queued]
+      - job_manifest.json (contract-valid manifest)    [no status inside]
     """
     body = await req.json()
 
-    # If you already generate job IDs elsewhere, replace this with your existing call.
     job_id = secrets.token_hex(8)
-    subfolder = body.get("subfolder", None)
-
+    subfolder = sanitize_subfolder(body.get("subfolder", None))
     created_at = now_iso()
 
-    # Write initial manifest immediately (authoritative record exists from creation)
-    write_manifest(
+    # Write Surface v1 job.json immediately (public doc exists from creation)
+    write_surface_job_json(
         job_id=job_id,
+        subfolder=subfolder,
         status="queued",
         created_at=created_at,
         updated_at=created_at,
-        subfolder=subfolder,
-        public={},
+        params=body or {},
+        artifacts={},
     )
+
+    # Write contract-valid manifest immediately
+    # IMPORTANT: do NOT pass public={} (schema requires full public object)
+    write_manifest(
+        job_id=job_id,
+        subfolder=subfolder,
+        updated_at=created_at,
+        # public=None -> writer builds the default contract-shaped public object
+    )
+
+    pub_root = public_root(job_id, subfolder=subfolder)
 
     return job_status(
         job_id=job_id,
         status="queued",
-        public_root=assets_root(job_id, subfolder=subfolder),
+        service="hexforge-glyphengine",
         updated_at=created_at,
+        result={
+            "public_root": pub_root,
+            "job_manifest": f"{pub_root}/job_manifest.json",
+            "job_json": f"{pub_root}/job.json",
+        },
     )
 
 
 @router.get("/jobs/{job_id}")
-async def get_job(job_id: str):
+async def get_job(job_id: str, subfolder: Optional[str] = None) -> Dict[str, Any]:
     """
     Surface v1 contract:
       GET returns job_status envelope.
 
-    Prefers job_manifest.json if present; otherwise infers state from files.
+    Deterministic lookup requires the correct subfolder if the job was created
+    under one: /assets/surface/<subfolder>/<job_id>/...
     """
-    root = job_dir(job_id)
+    subfolder = sanitize_subfolder(subfolder)
+
+    root = job_dir(job_id, subfolder=subfolder)
     if not root.exists():
         raise HTTPException(status_code=404, detail="job not found")
 
-    mpath = manifest_path(job_id)
+    mpath = manifest_path(job_id, subfolder=subfolder)
+    pub_root = public_root(job_id, subfolder=subfolder)
 
+    # Prefer manifest (for updated_at + authoritative public_root)
     if mpath.exists():
         doc = json.loads(mpath.read_text(encoding="utf-8"))
-        status = doc.get("status") or infer_status_from_files(job_id)
         updated_at = doc.get("updated_at") or now_iso()
-        public_root = doc.get("public_root") or assets_root(job_id)
+        pub_root = doc.get("public_root") or pub_root
+
+        status = infer_status_from_files(job_id, subfolder=subfolder)
+
         return job_status(
             job_id=job_id,
             status=status,
-            public_root=public_root,
+            service="hexforge-glyphengine",
             updated_at=updated_at,
+            result={
+                "public_root": pub_root,
+                "job_manifest": f"{pub_root}/job_manifest.json",
+                "job_json": f"{pub_root}/job.json",
+            },
         )
 
-    # Fallback if manifest is missing for some reason
-    status = infer_status_from_files(job_id)
+    # Fallback if manifest missing
+    status = infer_status_from_files(job_id, subfolder=subfolder)
     return job_status(
         job_id=job_id,
         status=status,
-        public_root=assets_root(job_id),
+        service="hexforge-glyphengine",
         updated_at=now_iso(),
+        result={
+            "public_root": pub_root,
+            "job_manifest": f"{pub_root}/job_manifest.json",
+            "job_json": f"{pub_root}/job.json",
+        },
     )
+
+
+@router.get("/jobs/{job_id}/manifest")
+async def get_manifest(job_id: str, subfolder: Optional[str] = None) -> JSONResponse:
+    subfolder = sanitize_subfolder(subfolder)
+
+    root = job_dir(job_id, subfolder=subfolder)
+    if not root.exists():
+        raise HTTPException(status_code=404, detail="job not found")
+
+    mpath = manifest_path(job_id, subfolder=subfolder)
+    if not mpath.exists():
+        raise HTTPException(status_code=404, detail="job_manifest.json not found")
+
+    doc = json.loads(mpath.read_text(encoding="utf-8"))
+
+    schema = load_schema("job_manifest.schema.json")
+    validate_json(doc, schema)
+
+    return JSONResponse(content=doc)
