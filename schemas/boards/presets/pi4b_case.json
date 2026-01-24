@@ -1,0 +1,7 @@
+{
+  "id": "pi4b_case",
+  "label": "Raspberry Pi 4B Case (Default)",
+  "board": "pi4b",
+  "case_variants": ["base", "lid", "panel"],
+  "emboss_mode": "lid"
+}

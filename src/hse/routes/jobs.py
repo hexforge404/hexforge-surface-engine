@@ -10,6 +10,7 @@ from hse.contracts.envelopes import job_status, now_iso
 from hse.contracts import validate_contract
 from hse.fs.paths import assert_valid_job_id, job_dir, manifest_path, public_root, sanitize_subfolder
 from hse.fs.writer import write_manifest, write_surface_job_json
+from hse.utils.boards import default_board_case_id
 from fastapi.responses import JSONResponse
 
 
@@ -41,10 +42,12 @@ def _normalized_emboss_mode(value, *, target: str):
 
 def _normalized_board_id(value):
     try:
-        bid = (value or "pi4b").strip().lower()
+        bid = (value or "").strip().lower()
     except Exception:
-        bid = "pi4b"
-    return bid or "pi4b"
+        bid = ""
+    if not bid:
+        return default_board_case_id()
+    return bid
 
 
 def infer_status_from_files(job_id: str, *, subfolder: Optional[str] = None) -> str:

@@ -14,7 +14,7 @@ from hse.fs.paths import assert_valid_job_id, job_dir, job_json_path, public_roo
 from hse.fs.writer import build_outputs, write_manifest, write_surface_job_json
 from hse.utils.geometry import evaluate_geometry, parse_stl_metadata, sample_heightmap_range
 from hse.utils.render import render_hero_from_stl
-from hse.utils.boards import load_board_def
+from hse.utils.boards import default_board_case_id, load_board_def
 from PIL import Image, ImageOps
 
 
@@ -51,10 +51,12 @@ def _normalized_emboss_mode(value: Optional[str], *, target: str) -> str:
 
 def _normalized_board_id(value: Optional[str]) -> str:
     try:
-        bid = (value or "pi4b").strip().lower()
+        bid = (value or "").strip().lower()
     except Exception:
-        bid = "pi4b"
-    return bid or "pi4b"
+        bid = ""
+    if not bid:
+        return default_board_case_id()
+    return bid
 
 
 def _read_job_state(job_id: str, subfolder: Optional[str]) -> Tuple[str, Dict, Dict]:

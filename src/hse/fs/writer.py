@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from hse.contracts import validate_contract
 from hse.contracts.envelopes import job_manifest_v1, now_iso
 from hse.fs.paths import job_dir, job_json_path, manifest_path, public_root, sanitize_subfolder
-from hse.utils.boards import load_board_def
+from hse.utils.boards import default_board_case_id, load_board_def
 
 
 def _normalized_target(value: Optional[str]) -> str:
@@ -30,10 +30,12 @@ def _normalized_emboss_mode(value: Optional[str], *, target: str) -> str:
 
 def _normalized_board_id(value: Optional[str]) -> str:
     try:
-        board_id = (value or "pi4b").strip().lower()
+        board_id = (value or "").strip().lower()
     except Exception:
-        board_id = "pi4b"
-    return board_id or "pi4b"
+        board_id = ""
+    if not board_id:
+        return default_board_case_id()
+    return board_id
 
 
 def write_json_atomic(path: Path, obj: Any) -> None:
