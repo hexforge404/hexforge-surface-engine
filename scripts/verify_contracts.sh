@@ -1,7 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+PYTHON_BIN="${PYTHON_BIN:-python3}"
+
 ENGINE_CONTAINER="${HEXFORGE_ENGINE_CONTAINER:-}"
+
+${PYTHON_BIN} - <<'PY'
+import json
+from pathlib import Path
+from jsonschema import validate
+
+schema = json.loads(Path('schemas/common/board_def.schema.json').read_text(encoding='utf-8'))
+defs_root = Path('schemas/boards')
+docs = []
+for path in sorted(defs_root.glob('*.json')):
+    doc = json.loads(path.read_text(encoding='utf-8'))
+    validate(doc, schema)
+    docs.append(doc.get('id', path.stem))
+print("OK board defs validated (host):", ",".join(docs))
+PY
 is_running() {
     docker ps --format '{{.Names}}' | grep -Fx "$1" >/dev/null 2>&1
 }
@@ -40,28 +57,36 @@ base = "${BASE}"
 status_schema = load_contract_schema("job_status.schema.json")
 manifest_schema = load_contract_schema("job_manifest.schema.json")
 
-req = urllib.request.Request(
-    f"{base}/jobs",
-    data=json.dumps({}).encode("utf-8"),
-    headers={"Content-Type":"application/json"},
-    method="POST",
-)
-with urllib.request.urlopen(req) as r:
-    created = json.loads(r.read().decode("utf-8"))
 
-validate(created, status_schema)
-job_id = created["job_id"]
-print("OK POST job_status:", job_id)
+def _run_job(body: dict):
+    req = urllib.request.Request(
+        f"{base}/jobs",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Content-Type":"application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req) as r:
+        created = json.loads(r.read().decode("utf-8"))
+    validate(created, status_schema)
+    job_id = created["job_id"]
+    print("OK POST job_status:", job_id, "target=", body.get("target", "tile"))
 
-with urllib.request.urlopen(f"{base}/jobs/{job_id}") as r:
-    st = json.loads(r.read().decode("utf-8"))
-validate(st, status_schema)
-print("OK GET job_status:", job_id, st["status"])
+    with urllib.request.urlopen(f"{base}/jobs/{job_id}") as r:
+        st = json.loads(r.read().decode("utf-8"))
+    validate(st, status_schema)
+    print("OK GET job_status:", job_id, st["status"])
 
-mp = manifest_path(job_id, subfolder=None)
-m = json.loads(mp.read_text(encoding="utf-8"))
-validate(m, manifest_schema)
-print("OK manifest schema:", mp)
+    mp = manifest_path(job_id, subfolder=None)
+    m = json.loads(mp.read_text(encoding="utf-8"))
+    validate(m, manifest_schema)
+    print("OK manifest schema:", mp)
+    if "board_case" in (m.get("public") or {}):
+        bc = m["public"]["board_case"]
+        print("OK board_case public keys:", sorted(bc.keys()))
+    return job_id
+
+_run_job({})
+_run_job({"target": "board_case", "board": "pi4b"})
 PY
 
 echo "✅ contracts verified"
