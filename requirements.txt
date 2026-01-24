@@ -5,3 +5,6 @@ pydantic==2.10.4
 python-multipart==0.0.9
 orjson==3.10.12
 pillow==10.4.0
+numpy==1.26.4
+matplotlib==3.8.4
+trimesh==4.4.3

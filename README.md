@@ -44,6 +44,17 @@ repeatable, displacement-ready surface detail and parametric enclosures for
   - `enclosure/enclosure.stl`
   - `job.json` (service doc) and `job_manifest.json` (contract)
 
+### Preview rendering (hero)
+
+- `previews/hero.png` is rendered deterministically from the final displaced STL.
+- Implementation uses headless matplotlib + trimesh: centers on the mesh centroid, fixed isometric camera, dark background, simple key lighting, and per-face shading from normals.
+- If the STL is missing/invalid or the resulting image is effectively flat (very low pixel variance), the job fails instead of marking complete.
+
+### Heightmap inputs
+
+- Jobs must provide a `heightmap_url` (or `heightmap.url`) param; the worker downloads it into `inputs/input_heightmap.png` and reuses it as `textures/heightmap.png` with checksum + dimensions recorded in `outputs`.
+- If the heightmap is missing or empty, the job fails. There is no placeholder/fallback heightmap.
+
 ### Contracts and validation
 
 - All envelopes validate against `schemas/common` via `hexforge_contracts`.
