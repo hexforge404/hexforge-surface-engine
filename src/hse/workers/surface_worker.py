@@ -330,7 +330,7 @@ def _generate_pi4b_case(heightmap: Path, root: Path, emboss_mode: str) -> Tuple[
 
 def _generate_board_case(heightmap: Path, root: Path, emboss_mode: str, board_id: str) -> Tuple[Dict[str, Optional[Path]], Path, Dict[str, Dict[str, object]]]:
     board_def = load_board_def(board_id)
-    if board_def.get("id") == "pi4b":
+    if board_def.get("id") in {"pi4b", "pi5"}:
         return _generate_pi4b_case(heightmap, root, emboss_mode)
     raise RuntimeError(f"board_case_unsupported:{board_def.get('id')}")
 
