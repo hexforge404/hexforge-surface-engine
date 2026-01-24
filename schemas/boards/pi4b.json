@@ -1,0 +1,11 @@
+{
+  "id": "pi4b",
+  "label": "Raspberry Pi 4 Model B",
+  "board_mm": [85, 56],
+  "mount_pattern": "pi4b",
+  "defaults": {
+    "wall_mm": 2.4,
+    "clearance_mm": 1.0,
+    "lid_style": "snap"
+  }
+}

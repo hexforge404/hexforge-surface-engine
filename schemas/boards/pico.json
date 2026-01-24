@@ -1,0 +1,11 @@
+{
+  "id": "pico",
+  "label": "Raspberry Pi Pico",
+  "board_mm": [51, 21],
+  "mount_pattern": "pico",
+  "defaults": {
+    "wall_mm": 2.0,
+    "clearance_mm": 0.8,
+    "lid_style": "snap"
+  }
+}
